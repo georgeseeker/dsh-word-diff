@@ -29,6 +29,10 @@ no extra diffs are computed server-side.
 | wrap lines / no wrap | wrap long lines, or scroll horizontally |
 | word highlights | turn the intra-line marks off |
 
+The **side by side / unified** and **wrap** choices are remembered in the browser
+(`localStorage`, key `dsh-word-diff:view`), so every review — and every reload — opens the
+way you left it instead of resetting to unified. The word-highlight toggle is per-view.
+
 ## Install
 
 The package is private and not published to npm. Install the directory as a bundle:

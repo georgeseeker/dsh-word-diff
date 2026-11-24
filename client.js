@@ -690,6 +690,38 @@ window.__ModuleLoader__.load({
 .wd-retry { padding: 8px 16px 0; }
 `
 
+    // ── remembered view ───────────────────────────────────────────────────────
+
+    /** Where the two layout toggles are remembered across reviews and reloads. */
+    const PREFS_KEY = 'dsh-word-diff:view'
+
+    /**
+     * Read the remembered layout, falling back to unified and unwrapped.
+     * @returns {{split: boolean, wrap: boolean}} the remembered toggles.
+     */
+    function readViewPrefs() {
+      try {
+        const raw = window.localStorage.getItem(PREFS_KEY)
+        if (raw === null) return { split: false, wrap: false }
+        const value = JSON.parse(raw)
+        return { split: value?.split === true, wrap: value?.wrap === true }
+      } catch {
+        return { split: false, wrap: false }
+      }
+    }
+
+    /**
+     * Remember the layout so the next review opens the way this one was left.
+     * @param {{split: boolean, wrap: boolean}} prefs - the toggles to remember.
+     */
+    function writeViewPrefs(prefs) {
+      try {
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ split: prefs.split === true, wrap: prefs.wrap === true }))
+      } catch {
+        // A browser that refuses storage just keeps the in-memory choice.
+      }
+    }
+
     // ── the review body ───────────────────────────────────────────────────────
 
     /**
@@ -713,9 +745,12 @@ window.__ModuleLoader__.load({
       const [diff, setDiff] = useState(undefined)
       const [reload, setReload] = useState(0)
       const [chosen, setChosen] = useState(undefined)
-      const [split, setSplit] = useState(false)
-      const [wrap, setWrap] = useState(false)
+      const [split, setSplit] = useState(() => readViewPrefs().split)
+      const [wrap, setWrap] = useState(() => readViewPrefs().wrap)
       const [inline, setInline] = useState(true)
+
+      // Remember the two layout toggles so the next review opens as this one was left.
+      useEffect(() => { writeViewPrefs({ split, wrap }) }, [split, wrap])
 
       const sessionKey = coordinates === undefined ? undefined : coordinates.sessionId
       const seqKey = coordinates === undefined ? undefined : coordinates.seq
