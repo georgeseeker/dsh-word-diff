@@ -18,6 +18,10 @@ VS Code show a word diff, instead of painting the whole line.
   for inserted words, on top of the usual line backgrounds.
 - **Only rewrites are marked.** A purely added or purely deleted line keeps nothing but
   its line background, so the view never turns into a wall of highlight.
+- **Survives a whole-file replacement.** When the Host's own comparison degrades to
+  "every line deleted, every line added" — because the file only changed its line endings
+  (CRLF ↔ LF), or because its line diff hit the Host's 100 ms timeout — the plugin rebuilds
+  the comparison from the two sides it carries and shows the real edits again.
 - **Unified and side-by-side** layouts; side-by-side pairs each removal with the addition
   that rewrote it (git-style similarity alignment), not by blind position.
 - **Wrap toggle** that really wraps (long lines fold in unified view, clip per column in
@@ -106,6 +110,24 @@ punctuation mark) and diffed with a longest-common-subsequence pass after trimmi
 common prefix and suffix, so only genuinely replaced tokens carry a mark. Very large token
 matrices fall back to marking the whole differing span; very long runs fall back to
 positional pairing.
+
+## When the Host comparison is degenerate
+
+A comparison that replaces every line and keeps no context hides the real edits, and two
+ordinary situations produce exactly that:
+
+- **Line endings changed.** The recorder compares the turn's two copies as raw bytes, so a
+  file that was CRLF at turn start and LF at turn end differs on every single line, even
+  though `git diff` shows a handful of edits (`core.autocrlf` hides it).
+- **The line comparison timed out.** `@deepseek-ai/dsh-workspace-changes` allows its diff
+  `diffTimeoutMs` (100 ms by default) and degrades to one hunk replacing every line.
+
+In both cases the plugin rebuilds the comparison: it recovers the old and new text from
+that single hunk, compares line by line with the line terminator ignored, and produces
+proper hunks with three context lines, which then flow through the same word-marking
+pipeline. The header's `+N -M` totals are recomputed from the rebuilt comparison so they
+match what is drawn. Ordinary comparisons — pure additions, pure deletions, any hunk with
+context — are left exactly as the Host served them.
 
 ## Compatibility
 

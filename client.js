@@ -507,6 +507,186 @@ window.__ModuleLoader__.load({
       return { hunks, truncated }
     }
 
+    // ── rebuilding a degenerate comparison ────────────────────────────────────
+
+    /** Context lines drawn around each rebuilt change, as the shipped comparison uses. */
+    const CONTEXT_LINES = 3
+    /** Lines one rebuilt comparison may hold; past this the served view stands as-is. */
+    const MAX_REBUILD_LINES = 20000
+    /** Line-matrix cells the rebuild may build before it anchors on unique lines instead. */
+    const MAX_LINE_MATRIX = 4_000_000
+    /** Remaining recursion depth for anchored segment diffing. */
+    const MAX_ANCHOR_DEPTH = 6
+
+    /**
+     * Longest run of candidate matches that keeps the right side ascending.
+     * @param {[number, number][]} pairs - candidate (left, right) indexes, ascending on the left.
+     * @returns {[number, number][]} the pairs to anchor on.
+     */
+    function increasingPairs(pairs) {
+      const tails = []
+      const tailAt = []
+      const previous = new Array(pairs.length).fill(-1)
+      for (let at = 0; at < pairs.length; at += 1) {
+        const value = pairs[at][1]
+        let low = 0
+        let high = tails.length
+        while (low < high) {
+          const middle = (low + high) >> 1
+          if (tails[middle] < value) low = middle + 1
+          else high = middle
+        }
+        tails[low] = value
+        tailAt[low] = at
+        previous[at] = low > 0 ? tailAt[low - 1] : -1
+      }
+      const kept = []
+      let at = tails.length === 0 ? -1 : tailAt[tails.length - 1]
+      while (at >= 0) {
+        kept.push(pairs[at])
+        at = previous[at]
+      }
+      return kept.reverse()
+    }
+
+    /**
+     * Line-level edit script: an LCS while its matrix stays affordable, and
+     * unique-line anchoring on the segments between anchors once it does not.
+     * @param {string[]} left - the old lines.
+     * @param {string[]} right - the new lines.
+     * @param {number} depth - remaining anchoring depth.
+     * @returns {{kind: 'same' | 'del' | 'add', token: string}[]} the script.
+     */
+    function lineOps(left, right, depth = MAX_ANCHOR_DEPTH) {
+      if (left.length === 0) return right.map(token => ({ kind: 'add', token }))
+      if (right.length === 0) return left.map(token => ({ kind: 'del', token }))
+      if (left.length * right.length <= MAX_LINE_MATRIX) return lcsOps(left, right)
+      const replaceAll = () => [
+        ...left.map(token => ({ kind: 'del', token })),
+        ...right.map(token => ({ kind: 'add', token })),
+      ]
+      if (depth === 0) return replaceAll()
+      const leftCount = new Map()
+      const rightCount = new Map()
+      for (const line of left) leftCount.set(line, (leftCount.get(line) ?? 0) + 1)
+      for (const line of right) rightCount.set(line, (rightCount.get(line) ?? 0) + 1)
+      const rightAt = new Map()
+      for (let at = 0; at < right.length; at += 1) {
+        if (rightCount.get(right[at]) === 1) rightAt.set(right[at], at)
+      }
+      const candidates = []
+      for (let at = 0; at < left.length; at += 1) {
+        if (leftCount.get(left[at]) !== 1) continue
+        const match = rightAt.get(left[at])
+        if (match !== undefined) candidates.push([at, match])
+      }
+      const anchors = increasingPairs(candidates)
+      if (anchors.length === 0) return replaceAll()
+      const ops = []
+      let leftAt = 0
+      let rightAt2 = 0
+      for (const [anchorLeft, anchorRight] of anchors) {
+        ops.push(...lineOps(left.slice(leftAt, anchorLeft), right.slice(rightAt2, anchorRight), depth - 1))
+        ops.push({ kind: 'same', token: left[anchorLeft] })
+        leftAt = anchorLeft + 1
+        rightAt2 = anchorRight + 1
+      }
+      ops.push(...lineOps(left.slice(leftAt), right.slice(rightAt2), depth - 1))
+      return ops
+    }
+
+    /**
+     * Group a line script into numbered hunks with context around each change.
+     * @param {{kind: string, token: string}[]} ops - the line script.
+     * @returns {{oldStart: number, oldLines: number, newStart: number, newLines: number, lines: string[]}[]} the hunks.
+     */
+    function hunksFromOps(ops) {
+      let oldNo = 1
+      let newNo = 1
+      const rows = []
+      const oldBefore = []
+      const newBefore = []
+      for (const op of ops) {
+        oldBefore.push(oldNo - 1)
+        newBefore.push(newNo - 1)
+        if (op.kind === 'same') { rows.push({ sign: ' ', text: op.token }); oldNo += 1; newNo += 1 }
+        else if (op.kind === 'del') { rows.push({ sign: '-', text: op.token }); oldNo += 1 }
+        else { rows.push({ sign: '+', text: op.token }); newNo += 1 }
+      }
+      const changed = []
+      for (let at = 0; at < rows.length; at += 1) if (rows[at].sign !== ' ') changed.push(at)
+      if (changed.length === 0) return []
+      const groups = []
+      let from = changed[0]
+      let to = changed[0]
+      for (const at of changed.slice(1)) {
+        if (at - to <= CONTEXT_LINES * 2) to = at
+        else { groups.push([from, to]); from = at; to = at }
+      }
+      groups.push([from, to])
+      return groups.map(([start, end]) => {
+        const first = Math.max(0, start - CONTEXT_LINES)
+        const last = Math.min(rows.length - 1, end + CONTEXT_LINES)
+        const body = rows.slice(first, last + 1)
+        return {
+          oldStart: oldBefore[first] + 1,
+          oldLines: body.filter(row => row.sign !== '+').length,
+          newStart: newBefore[first] + 1,
+          newLines: body.filter(row => row.sign !== '-').length,
+          lines: body.map(row => row.sign + row.text),
+        }
+      })
+    }
+
+    /**
+     * Whether a served comparison replaced every line without any context, which
+     * is what a line-ending-only difference or a timed-out line comparison looks
+     * like. Both hide the real edits behind a whole-file replacement.
+     * @param {object} diff - a served text comparison.
+     * @returns {boolean} whether the plugin should rebuild the comparison.
+     */
+    function isDegenerate(diff) {
+      if (diff.kind !== 'text' || diff.hunks.length !== 1) return false
+      const lines = diff.hunks[0].lines
+      if (lines.length < 2 || lines.length > MAX_REBUILD_LINES) return false
+      let dels = 0
+      let adds = 0
+      for (const line of lines) {
+        if (line.startsWith('-')) dels += 1
+        else if (line.startsWith('+')) adds += 1
+        else return false
+      }
+      return dels > 0 && adds > 0
+    }
+
+    /**
+     * Rebuild a degenerate comparison from the two sides it carries, comparing
+     * line by line with the line terminator ignored, so a file that only changed
+     * its line endings — or whose Host comparison timed out — shows its real
+     * edits instead of the whole file deleted and re-added.
+     * @param {object} diff - the degenerate served comparison.
+     * @returns {object} the comparison to draw, carrying its own change totals.
+     */
+    function rebuildComparison(diff) {
+      const withoutCr = text => (text.endsWith('\r') ? text.slice(0, -1) : text)
+      const left = []
+      const right = []
+      for (const line of diff.hunks[0].lines) {
+        const text = withoutCr(line.slice(1))
+        if (line.startsWith('-')) left.push(text)
+        else if (line.startsWith('+')) right.push(text)
+        else { left.push(text); right.push(text) }
+      }
+      const ops = lineOps(left, right)
+      let added = 0
+      let deleted = 0
+      for (const op of ops) {
+        if (op.kind === 'add') added += 1
+        else if (op.kind === 'del') deleted += 1
+      }
+      return { ...diff, hunks: hunksFromOps(ops), coarse: false, added, deleted }
+    }
+
     // ── drawing ───────────────────────────────────────────────────────────────
 
     /** @returns {string | object[]} the text of one row, with marked runs when it has any. */
@@ -529,12 +709,14 @@ window.__ModuleLoader__.load({
       return h('p', { className: 'wd-status', role: 'status' }, h('span', null, text), children)
     }
 
-    function Counts({ file, t }) {
+    function Counts({ file, t, counts }) {
       if (file.binary === true) return h('span', { className: 'wd-count wd-count-quiet' }, t('binaryShort'))
       if (file.oversized === true) return h('span', { className: 'wd-count wd-count-quiet' }, t('oversizedShort'))
+      const added = counts === undefined || counts.added === undefined ? file.added : counts.added
+      const deleted = counts === undefined || counts.deleted === undefined ? file.deleted : counts.deleted
       return h(React.Fragment, null,
-        h('span', { className: 'wd-count wd-count-add' }, t('added', { count: GROUPED.format(file.added ?? 0) })),
-        h('span', { className: 'wd-count wd-count-del' }, t('deleted', { count: GROUPED.format(file.deleted ?? 0) })))
+        h('span', { className: 'wd-count wd-count-add' }, t('added', { count: GROUPED.format(added ?? 0) })),
+        h('span', { className: 'wd-count wd-count-del' }, t('deleted', { count: GROUPED.format(deleted ?? 0) })))
     }
 
     /** The glyph inside a header tool: one 15px stroke drawing that inherits the button's colour. */
@@ -792,6 +974,15 @@ window.__ModuleLoader__.load({
 
       const retry = useCallback(() => { setReload((count) => count + 1) }, [])
 
+      // A comparison the Host served as one whole-file replacement hides the real
+      // edits behind it; rebuild it from the two sides it carries before drawing.
+      const prepared = useMemo(() => {
+        if (diff === null || typeof diff !== 'object') return undefined
+        if (!isDegenerate(diff)) return { diff, counts: undefined }
+        const rebuilt = rebuildComparison(diff)
+        return { diff: rebuilt, counts: { added: rebuilt.added, deleted: rebuilt.deleted } }
+      }, [diff])
+
       if (coordinates === undefined) {
         return h('div', { className: 'wd-root', 'data-word-diff': '' },
           h('style', { key: 'css' }, CSS),
@@ -809,7 +1000,7 @@ window.__ModuleLoader__.load({
             value: String(index),
             onChange: (event) => { setChosen(Number(event.target.value)) },
           }, files.map((entry, at) => h('option', { key: at, value: String(at) }, entry.display))),
-        file === undefined ? null : h('span', { className: 'wd-counts' }, h(Counts, { file, t })),
+        file === undefined ? null : h('span', { className: 'wd-counts' }, h(Counts, { file, t, counts: prepared === undefined ? undefined : prepared.counts })),
         h('span', { className: 'wd-tools' },
           h(ToolButton, {
             pressed: split, testId: 'split', icon: split ? 'unified' : 'split',
@@ -840,7 +1031,8 @@ window.__ModuleLoader__.load({
       else if (diff === 'loading' || diff === undefined) body = h(Status, { text: t('loading') })
       else if (diff === 'missing') body = h(Status, { text: t('missing') })
       else if (diff === 'error') body = failure(t('error'), retry)
-      else body = h(DiffView, { diff, split, wrap, inline, t })
+      else if (prepared === undefined) body = failure(t('error'), retry)
+      else body = h(DiffView, { diff: prepared.diff, split, wrap, inline, t })
 
       return h('div', { className: 'wd-root', 'data-word-diff': '' },
         h('style', { key: 'css' }, CSS),
