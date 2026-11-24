@@ -537,7 +537,45 @@ window.__ModuleLoader__.load({
         h('span', { className: 'wd-count wd-count-del' }, t('deleted', { count: GROUPED.format(file.deleted ?? 0) })))
     }
 
-    function ToolButton({ pressed, label, onClick, testId }) {
+    /** The glyph inside a header tool: one 15px stroke drawing that inherits the button's colour. */
+    function ToolIcon({ kind }) {
+      const common = {
+        viewBox: '0 0 16 16',
+        className: 'wd-glyph wd-glyph-' + kind,
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 1.2,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        'aria-hidden': true,
+        focusable: 'false',
+      }
+      if (kind === 'split') {
+        return h('svg', common,
+          h('rect', { x: 1.9, y: 2.4, width: 12.2, height: 11.2, rx: 1.8 }),
+          h('path', { d: 'M8 2.4v11.2' }))
+      }
+      if (kind === 'unified') {
+        return h('svg', common,
+          h('rect', { x: 1.9, y: 2.4, width: 12.2, height: 11.2, rx: 1.8 }),
+          h('path', { d: 'M1.9 8h12.2' }))
+      }
+      if (kind === 'wrap') {
+        return h('svg', common,
+          h('path', { d: 'M2.4 4.2h11.2M2.4 7.8h8a2.1 2.1 0 0 1 0 4.2H7.6' }),
+          h('path', { d: 'M9.2 10.2 7.3 12l1.9 1.9' }))
+      }
+      if (kind === 'nowrap') {
+        return h('svg', common,
+          h('path', { d: 'M2.4 4.2h11.2M2.4 7.8h11.2M2.4 11.4h7.4' }))
+      }
+      // 'inline': a highlighted word inside a line.
+      return h('svg', common,
+        h('rect', { x: 1.9, y: 3.1, width: 12.2, height: 9.8, rx: 1.8 }),
+        h('rect', { x: 5.2, y: 6.6, width: 5.6, height: 2.8, rx: 0.9, fill: 'currentColor', stroke: 'none' }))
+    }
+
+    function ToolButton({ pressed, label, icon, onClick, testId }) {
       return h('button', {
         type: 'button',
         className: 'wd-tool',
@@ -546,7 +584,7 @@ window.__ModuleLoader__.load({
         title: label,
         'data-wd-tool': testId,
         onClick,
-      }, label)
+      }, h(ToolIcon, { kind: icon }))
     }
 
     /**
@@ -613,10 +651,12 @@ window.__ModuleLoader__.load({
 .wd-count-add { color: rgb(1, 162, 65); }
 .wd-count-del { color: rgb(186, 39, 35); }
 .wd-count-quiet { color: var(--dsw-alias-label-tertiary); }
-.wd-tools { display: inline-flex; gap: 4px; flex: 0 0 auto; margin-left: auto; }
-.wd-tool { height: 24px; padding: 0 8px; font: inherit; font-size: 12px; color: var(--dsw-alias-label-secondary); background: transparent; border: 0.5px solid transparent; border-radius: 6px; cursor: pointer; }
-.wd-tool:hover { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
-.wd-tool[aria-pressed='true'] { background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-border-l2); color: var(--dsw-alias-label-primary); }
+.wd-tools { display: inline-flex; flex: 0 0 auto; gap: 2px; align-items: center; margin-left: auto; }
+.wd-tool { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--dsw-radius-sm, 6px); background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; }
+.wd-tool svg { display: block; width: 15px; height: 15px; }
+.wd-tool:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover, var(--dsw-alias-bg-layer-2)); }
+.wd-tool[aria-pressed='true'] { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); }
+.wd-retry-button { height: 24px; padding: 0 10px; font: inherit; font-size: 12px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 6px; cursor: pointer; }
 .wd-status { margin: 0; padding: 16px; font-size: 13px; color: var(--dsw-alias-label-secondary); }
 .wd-note { margin: 0; padding: 4px 16px 8px; font-size: 12px; color: var(--dsw-alias-label-tertiary); }
 .wd-diff { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
@@ -734,22 +774,25 @@ window.__ModuleLoader__.load({
         file === undefined ? null : h('span', { className: 'wd-counts' }, h(Counts, { file, t })),
         h('span', { className: 'wd-tools' },
           h(ToolButton, {
-            pressed: split, testId: 'split', label: t(split ? 'unified' : 'split'),
+            pressed: split, testId: 'split', icon: split ? 'unified' : 'split',
+            label: t(split ? 'unified' : 'split'),
             onClick: () => { setSplit((value) => !value) },
           }),
           h(ToolButton, {
-            pressed: wrap, testId: 'wrap', label: t(wrap ? 'nowrap' : 'wrap'),
+            pressed: wrap, testId: 'wrap', icon: wrap ? 'nowrap' : 'wrap',
+            label: t(wrap ? 'nowrap' : 'wrap'),
             onClick: () => { setWrap((value) => !value) },
           }),
           h(ToolButton, {
-            pressed: inline, testId: 'inline', label: t(inline ? 'inlineOff' : 'inline'),
+            pressed: inline, testId: 'inline', icon: 'inline',
+            label: t(inline ? 'inlineOff' : 'inline'),
             onClick: () => { setInline((value) => !value) },
           })))
 
       const failure = (message, onClick) => h('div', { className: 'wd-failure' },
         h(Status, { text: message }),
         h('div', { className: 'wd-retry' },
-          h('button', { type: 'button', className: 'wd-tool', onClick }, t('retry'))))
+          h('button', { type: 'button', className: 'wd-retry-button', onClick }, t('retry'))))
 
       let body
       if (summary === 'loading' || summary === undefined) body = h(Status, { text: t('loading') })
