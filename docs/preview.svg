@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" width="640" height="300" role="img" aria-label="A comparison card: a red line with a deeply red marked word, and a green line with a brightly green marked word.">
+  <rect x="20" y="40" width="600" height="220" rx="14" fill="#fbfbfd" stroke="#d8dce4" stroke-width="1.5"/>
+  <circle cx="46" cy="66" r="4.5" fill="#d3d8e2"/>
+  <circle cx="62" cy="66" r="4.5" fill="#d3d8e2"/>
+  <circle cx="78" cy="66" r="4.5" fill="#d3d8e2"/>
+  <rect x="36" y="92" width="568" height="30" rx="6" fill="#fbe4e0"/>
+  <rect x="36" y="92" width="3.5" height="30" rx="1.75" fill="#cf594f"/>
+  <rect x="56" y="104" width="56" height="7" rx="3.5" fill="#c9ced8"/>
+  <rect x="124" y="104" width="120" height="7" rx="3.5" fill="#c9ced8"/>
+  <rect x="256" y="100" width="86" height="15" rx="4" fill="#cf594f"/>
+  <rect x="354" y="104" width="140" height="7" rx="3.5" fill="#c9ced8"/>
+  <rect x="506" y="104" width="40" height="7" rx="3.5" fill="#c9ced8"/>
+  <rect x="36" y="134" width="568" height="30" rx="6" fill="#e3f3e6"/>
+  <rect x="36" y="134" width="3.5" height="30" rx="1.75" fill="#2fa25f"/>
+  <rect x="56" y="146" width="56" height="7" rx="3.5" fill="#c9ced8"/>
+  <rect x="124" y="146" width="120" height="7" rx="3.5" fill="#c9ced8"/>
+  <rect x="256" y="142" width="104" height="15" rx="4" fill="#2fa25f"/>
+  <rect x="372" y="146" width="122" height="7" rx="3.5" fill="#c9ced8"/>
+  <rect x="506" y="146" width="40" height="7" rx="3.5" fill="#c9ced8"/>
+  <rect x="36" y="176" width="568" height="30" rx="6" fill="#f4f5f8"/>
+  <rect x="56" y="188" width="56" height="7" rx="3.5" fill="#c9ced8"/>
+  <rect x="124" y="188" width="230" height="7" rx="3.5" fill="#c9ced8"/>
+  <rect x="36" y="218" width="568" height="26" rx="6" fill="#f9fafc"/>
+  <rect x="56" y="228" width="42" height="7" rx="3.5" fill="#dde1e9"/>
+  <rect x="110" y="228" width="168" height="7" rx="3.5" fill="#dde1e9"/>
+</svg>

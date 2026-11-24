@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Word-level diff",
-    "description": "Intra-line highlighting in the changed-files review: removed words get a deeper red inside the red line, inserted words a brighter green inside the green line.",
+    "description": "Adds intra-line highlighting to the changed-files review. In a turn's changed files, open a file to see its comparison in the right sidebar: removed words inside a red line get a deeper red and inserted words inside a green line get a brighter green, so a word or two edited inside a long line is visible at a glance instead of repainting the whole line. The header carries the file picker, side-by-side / unified, wrap, and word-highlight toggles. It reads only the comparison the Harness already serves — no extra diffs, no files read — and turning the plugin off restores the built-in review.",
     "detail": "docs/DETAIL.md"
   }
 }
