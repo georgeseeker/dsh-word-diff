@@ -144,6 +144,31 @@ window.__ModuleLoader__.load({
         && Array.isArray(hunk.lines) && hunk.lines.every(line => typeof line === 'string'))
     }
 
+    /** A read settles within this budget, so a stalled request can never leave the view loading. */
+    const READ_TIMEOUT_MS = 15000
+
+    /**
+     * Read one authenticated Host record.
+     * @param {string} url - a document-relative route.
+     * @param {AbortSignal} signal - cancelled when the coordinates change.
+     * @param {(value: unknown) => boolean} decode - shape check for the served JSON.
+     * @returns {Promise<unknown | 'missing' | 'error'>} the record, or the state to show.
+     */
+    async function readJson(url, signal, decode) {
+      const budget = typeof AbortSignal.timeout === 'function' && typeof AbortSignal.any === 'function'
+        ? AbortSignal.any([signal, AbortSignal.timeout(READ_TIMEOUT_MS)])
+        : signal
+      try {
+        const response = await fetch(url, { signal: budget })
+        if (response.status === 404) return 'missing'
+        if (!response.ok) return 'error'
+        const value = await response.json()
+        return decode(value) ? value : 'error'
+      } catch {
+        return 'error'
+      }
+    }
+
     // ── word diff ─────────────────────────────────────────────────────────────
 
     /**
@@ -264,6 +289,8 @@ window.__ModuleLoader__.load({
 
     /** Similarity floor below which a removal and an addition are not treated as a rewritten line. */
     const MIN_PAIR_SIMILARITY = 0.3
+    /** Share of either line the marks may cover before the pair is drawn as a plain replacement. */
+    const MAX_MARK_RATIO = 0.75
     /** Largest removal/add run aligned by score; longer runs pair by position instead. */
     const MAX_ALIGN_ROWS = 40
 
@@ -381,6 +408,11 @@ window.__ModuleLoader__.load({
 
     /**
      * Mark what changed inside every paired line.
+     *
+     * Only a rewrite is marked: a line that was purely added or purely deleted has
+     * no counterpart, so it keeps nothing but its line background. A pair whose
+     * marks would cover most of both lines is dropped as well — at that point the
+     * line is effectively replaced wholesale and full highlighting reads as noise.
      * @param {ReturnType<typeof hunkRows>} rows - one hunk's rows.
      * @param {Map<number, number>} pairing - removal row → addition row.
      * @returns {(undefined | {text: string, changed: boolean}[])[]} runs per row index.
@@ -389,10 +421,25 @@ window.__ModuleLoader__.load({
       const runs = new Array(rows.length)
       for (const [del, add] of pairing) {
         const diff = wordDiff(rows[del].text, rows[add].text)
+        if (markedRatio(rows[del].text, diff.left) > MAX_MARK_RATIO) continue
+        if (markedRatio(rows[add].text, diff.right) > MAX_MARK_RATIO) continue
         runs[del] = diff.left
         runs[add] = diff.right
       }
       return runs
+    }
+
+    /**
+     * The share of a line the marks would cover.
+     * @param {string} text - the line without its sign.
+     * @param {{text: string, changed: boolean}[]} runs - its runs.
+     * @returns {number} 0..1.
+     */
+    function markedRatio(text, runs) {
+      if (runs === undefined || text.length === 0) return 0
+      let marked = 0
+      for (const run of runs) if (run.changed) marked += run.text.length
+      return marked / text.length
     }
 
     /**
@@ -507,7 +554,7 @@ window.__ModuleLoader__.load({
      * @param {object} props - the served comparison and the layout choices.
      * @returns {import('react').ReactNode} the comparison.
      */
-    function DiffView({ diff, split, wrap, inline, t, onRetry }) {
+    function DiffView({ diff, split, wrap, inline, t }) {
       const model = useMemo(() => (diff.kind === 'text' ? buildModel(diff, inline) : undefined), [diff, inline])
       if (diff.kind === 'binary') return h(Status, { text: t('binary') })
       if (diff.kind === 'oversized') return h(Status, { text: t('oversized') })
@@ -554,10 +601,6 @@ window.__ModuleLoader__.load({
           h('span', { className: 'wd-sign' }, signOf(row.kind)),
           h('span', { className: 'wd-text' }, rowText(row.text, hunk.runs[at], row.kind)))))))
       children.push(body)
-      if (onRetry !== undefined) {
-        children.push(h('div', { key: 'tools', className: 'wd-retry' },
-          h('button', { type: 'button', className: 'wd-tool', onClick: onRetry }, t('retry'))))
-      }
       return h('div', { className: 'wd-diff' }, children)
     }
 
@@ -623,7 +666,9 @@ window.__ModuleLoader__.load({
       const coordinates = useMemo(() => parseAddress(contentId), [contentId])
 
       const [summary, setSummary] = useState(undefined)
-      const [diffs, setDiffs] = useState({})
+      const [summaryReload, setSummaryReload] = useState(0)
+      const [diff, setDiff] = useState(undefined)
+      const [reload, setReload] = useState(0)
       const [chosen, setChosen] = useState(undefined)
       const [split, setSplit] = useState(false)
       const [wrap, setWrap] = useState(false)
@@ -632,21 +677,17 @@ window.__ModuleLoader__.load({
       const sessionKey = coordinates === undefined ? undefined : coordinates.sessionId
       const seqKey = coordinates === undefined ? undefined : coordinates.seq
 
+      // One request per read, aborted when the coordinates change: the state this
+      // effect writes must never be part of its dependencies, or the cleanup would
+      // cancel the request that is still in flight and the view would load forever.
       useEffect(() => {
         if (sessionKey === undefined || seqKey === undefined) return undefined
-        let cancelled = false
+        const controller = new AbortController()
         setSummary('loading')
-        fetch(summaryUrl(sessionKey, seqKey))
-          .then(async (response) => {
-            if (response.status === 404) return 'missing'
-            if (!response.ok) return 'error'
-            const value = await response.json().catch(() => 'error')
-            return isSummary(value) ? value : 'error'
-          })
-          .catch(() => 'error')
-          .then((value) => { if (!cancelled) setSummary(value) })
-        return () => { cancelled = true }
-      }, [sessionKey, seqKey])
+        readJson(summaryUrl(sessionKey, seqKey), controller.signal, isSummary)
+          .then((value) => { if (!controller.signal.aborted) setSummary(value) })
+        return () => { controller.abort() }
+      }, [sessionKey, seqKey, summaryReload])
 
       const navigated = tab === undefined || tab.navigation === undefined ? undefined : tab.navigation
       const navigatedRevision = navigated === undefined ? undefined : navigated.revision
@@ -663,34 +704,15 @@ window.__ModuleLoader__.load({
         ? undefined : diffUrl(sessionKey, seqKey, index)
 
       useEffect(() => {
-        if (url === undefined) return undefined
-        if (diffs[url] !== undefined) return undefined
-        let cancelled = false
-        setDiffs((current) => ({ ...current, [url]: 'loading' }))
-        fetch(url)
-          .then(async (response) => {
-            if (response.status === 404) return 'missing'
-            if (!response.ok) return 'error'
-            const value = await response.json().catch(() => 'error')
-            return isDiff(value) ? value : 'error'
-          })
-          .catch(() => 'error')
-          .then((value) => {
-            if (!cancelled) setDiffs((current) => ({ ...current, [url]: value }))
-          })
-        return () => { cancelled = true }
-      }, [url, diffs])
+        if (url === undefined) { setDiff(undefined); return undefined }
+        const controller = new AbortController()
+        setDiff('loading')
+        readJson(url, controller.signal, isDiff)
+          .then((value) => { if (!controller.signal.aborted) setDiff(value) })
+        return () => { controller.abort() }
+      }, [url, reload])
 
-      const retry = useCallback(() => {
-        if (url === undefined) return
-        setDiffs((current) => {
-          const next = { ...current }
-          delete next[url]
-          return next
-        })
-      }, [url])
-
-      const diff = url === undefined ? undefined : diffs[url]
+      const retry = useCallback(() => { setReload((count) => count + 1) }, [])
 
       if (coordinates === undefined) {
         return h('div', { className: 'wd-root', 'data-word-diff': '' },
@@ -724,17 +746,19 @@ window.__ModuleLoader__.load({
             onClick: () => { setInline((value) => !value) },
           })))
 
+      const failure = (message, onClick) => h('div', { className: 'wd-failure' },
+        h(Status, { text: message }),
+        h('div', { className: 'wd-retry' },
+          h('button', { type: 'button', className: 'wd-tool', onClick }, t('retry'))))
+
       let body
       if (summary === 'loading' || summary === undefined) body = h(Status, { text: t('loading') })
       else if (summary === 'missing') body = h(Status, { text: t('missing') })
-      else if (summary === 'error') body = h(Status, { text: t('error') })
+      else if (summary === 'error') body = failure(t('error'), () => { setSummaryReload((count) => count + 1) })
       else if (file === undefined) body = h(Status, { text: t('unchanged') })
       else if (diff === 'loading' || diff === undefined) body = h(Status, { text: t('loading') })
       else if (diff === 'missing') body = h(Status, { text: t('missing') })
-      else if (diff === 'error') body = h(DiffView, {
-        diff: { kind: 'text', hunks: [], before: true, after: true, coarse: false },
-        split: false, wrap: false, inline: false, t, onRetry: retry,
-      })
+      else if (diff === 'error') body = failure(t('error'), retry)
       else body = h(DiffView, { diff, split, wrap, inline, t })
 
       return h('div', { className: 'wd-root', 'data-word-diff': '' },

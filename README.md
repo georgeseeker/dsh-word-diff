@@ -63,12 +63,15 @@ icon.svg
 
 ## Where the marks come from
 
-A removal is paired with the addition that rewrote it by token overlap: the run's
-removals and additions are aligned in order so that the summed line similarity is
-largest (git's heuristic), and a line whose best counterpart still overlaps less than
-30% stays unpaired, keeping only its line background. A pair is tokenized (each CJK
-character, each word, each whitespace run, each punctuation mark) and diffed with a
-longest-common-subsequence pass after trimming the common prefix and suffix, so only
-the genuinely replaced tokens carry a mark. Pairs whose token matrix would exceed
-250 000 cells fall back to marking the whole differing span, and runs longer than 40
-lines fall back to positional pairing.
+**Only a rewrite is marked.** A removal is paired with the addition that rewrote it by
+token overlap: the run's removals and additions are aligned in order so that the summed
+line similarity is largest (git's heuristic). A line whose best counterpart still overlaps
+less than 30% stays unpaired, and a pair whose marks would cover more than 75% of both
+lines is drawn plain — in both cases the line background is the only signal, which is what
+a purely added or purely deleted line gets too.
+
+A pair is tokenized (each CJK character, each word, each whitespace run, each punctuation
+mark) and diffed with a longest-common-subsequence pass after trimming the common prefix
+and suffix, so only the genuinely replaced tokens carry a mark. Pairs whose token matrix
+would exceed 250 000 cells fall back to marking the whole differing span, and runs longer
+than 40 lines fall back to positional pairing.

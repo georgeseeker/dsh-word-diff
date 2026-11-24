@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-word-diff",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "description": "Intra-line diff highlighting for the changed-files review tab: deleted lines keep a red background and the removed words get a deeper red, added lines keep a green background and the inserted words get a brighter green.",
@@ -32,3 +32,4 @@
     }
   }
 }
+
