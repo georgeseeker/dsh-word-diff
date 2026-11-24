@@ -660,20 +660,23 @@ window.__ModuleLoader__.load({
 .wd-status { margin: 0; padding: 16px; font-size: 13px; color: var(--dsw-alias-label-secondary); }
 .wd-note { margin: 0; padding: 4px 16px 8px; font-size: 12px; color: var(--dsw-alias-label-tertiary); }
 .wd-diff { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
-.wd-body { display: grid; flex: 1 1 auto; grid-template-columns: minmax(max-content, 100%); align-content: start; min-height: 0; overflow: auto; padding: 8px 0 16px; font: var(--dsw-font-markdown-code-block); font-size: 12px; line-height: 22px; }
-/* Side by side divides the visible width, so its rows are block-flow rows and never widen the scroll surface. */
-.wd-body[data-wd-view='split'] { display: block; }
+.wd-body { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: auto; padding: 8px 0 16px; font: var(--dsw-font-markdown-code-block); font-size: 12px; line-height: 22px; }
+/* Only the unwrapped unified view sizes its track to the longest line so it scrolls sideways. Wrapping must drop that track, or the column stays as wide as the longest line and pre-wrap never has a narrow enough box to wrap into. */
+.wd-body[data-wd-view='unified']:not(.wd-wrap) { display: grid; grid-template-columns: minmax(max-content, 100%); align-content: start; }
 .wd-hunk { margin-bottom: 8px; }
 .wd-hunk-header { padding: 4px 16px; color: var(--dsw-alias-label-tertiary); white-space: pre; }
 .wd-line { display: grid; grid-template-columns: 3.5em 3.5em 1.2em minmax(0, 1fr); box-sizing: border-box; min-height: 22px; line-height: 22px; white-space: pre; }
-.wd-split-line { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 22px; line-height: 22px; }
-.wd-cell { display: grid; grid-template-columns: 3.5em minmax(0, 1fr); box-sizing: border-box; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.wd-split-line { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 22px; line-height: 22px; white-space: pre; }
+.wd-cell { display: grid; grid-template-columns: 3.5em minmax(0, 1fr); box-sizing: border-box; min-width: 0; }
 .wd-cell + .wd-cell { border-left: 0.5px solid var(--dsw-alias-border-l2); }
 .wd-number { padding-right: 8px; color: var(--dsw-alias-label-tertiary); text-align: right; user-select: none; }
 .wd-sign { text-align: center; user-select: none; }
 .wd-text { padding-right: 16px; }
-.wd-wrap .wd-line { white-space: pre-wrap; }
+.wd-wrap .wd-line, .wd-wrap .wd-split-line { white-space: pre-wrap; }
 .wd-wrap .wd-text { overflow-wrap: anywhere; }
+/* Unwrapped side-by-side clips each column's long lines so they never run under the peer column. */
+.wd-body[data-wd-view='split']:not(.wd-wrap) .wd-cell { overflow: hidden; }
+.wd-body[data-wd-view='split']:not(.wd-wrap) .wd-text { overflow: hidden; text-overflow: ellipsis; }
 .wd-add { --wd-gutter: var(--dsw-alias-file-diff-added-gutter); --wd-marker: var(--dsw-alias-file-diff-added-marker); background: var(--dsw-alias-file-diff-added-bg); }
 .wd-del { --wd-gutter: var(--dsw-alias-file-diff-deleted-gutter); --wd-marker: var(--dsw-alias-file-diff-deleted-marker); background: var(--dsw-alias-file-diff-deleted-bg); }
 .wd-add .wd-number, .wd-del .wd-number { background: var(--wd-gutter, transparent); color: var(--wd-marker, var(--dsw-alias-label-tertiary)); }
