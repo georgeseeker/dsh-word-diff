@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Word-level diff",
+    "description": "Intra-line highlighting in the changed-files review: removed words get a deeper red inside the red line, inserted words a brighter green inside the green line.",
+    "detail": "docs/DETAIL.md"
+  }
+}

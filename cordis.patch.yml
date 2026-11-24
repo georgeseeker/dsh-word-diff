@@ -1,0 +1,4 @@
+- insert:
+    - id: word-diff
+      name: '@local/dsh-word-diff'
+      config: {}

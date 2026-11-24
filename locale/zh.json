@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "逐词 diff",
+    "description": "改动审阅里的行内高亮：删除行内的被删片段用更深的红，新增行内的新增片段用更亮的绿。",
+    "detail": "docs/DETAIL.md"
+  }
+}
