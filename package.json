@@ -4,6 +4,12 @@
   "private": true,
   "type": "module",
   "description": "Intra-line diff highlighting for the changed-files review tab: deleted lines keep a red background and the removed words get a deeper red, added lines keep a green background and the inserted words get a brighter green.",
+  "license": "MIT",
+  "author": "georgeseeker",
+  "repository": { "type": "git", "url": "git+https://github.com/georgeseeker/dsh-word-diff.git" },
+  "homepage": "https://github.com/georgeseeker/dsh-word-diff#readme",
+  "bugs": { "url": "https://github.com/georgeseeker/dsh-word-diff/issues" },
+  "keywords": ["dsh", "deepseek-harness", "plugin", "diff", "word-diff", "review"],
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -17,7 +23,8 @@
     "locale/*.json",
     "docs",
     "icon.svg",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "dsh": {
     "bundle": {
